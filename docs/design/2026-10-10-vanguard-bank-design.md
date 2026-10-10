@@ -87,16 +87,18 @@ vanguard-bank/
 - `vbank_accounts` — `id`, `number` (unique), `type` (savings, shared, business, job, gang), `name`, `owner` (citizenid, null for business/job/gang), `ref` (business id / job / gang name), `balance` BIGINT ≥ 0, `created_at`.
 - `vbank_personal` — `citizenid` (PK), `number` (unique). Balance stays in QBCore.
 - `vbank_members` — `account_id`, `citizenid`, `name`, `role`.
+- `vbank_pending` — `id`, `citizenid`, `amount`, `note`: transfers to offline Personal accounts, paid on their next login (row deleted first, so it is paid once).
+- `vbank_meta` — `k`, `v`: one-time flags (defaults added, qb-banking migrated).
 - `vbank_places` — `id`, `kind` (branch, atm), `x`, `y`, `z`, `heading`, `label` (branch name, e.g. "Fleeca Legion Square"). Filled with the 8 standard counters when empty on first start.
 - `vbank_transactions` — `id`, `account` (number), `kind` (deposit, withdraw, transfer_in, transfer_out, payment, fee, system), `amount` (signed), `actor` (name), `note`, `created_at`. Index on (`account`, `id`).
 
-Balances change only through one atomic statement: `UPDATE … SET balance = balance + ? WHERE id = ? AND balance + ? >= 0` (same pattern as Vanguard Business), so two players spending at once can never overdraw. Personal money goes through QBCore's `AddMoney` / `RemoveMoney`.
+Balances change only through one atomic statement: `UPDATE … SET balance = balance + ? WHERE id = ? AND balance + ? >= 0` (same pattern as Vanguard Business), so two players spending at once can never overdraw. Personal money goes through QBCore's `AddMoney` / `RemoveMoney`; QBCore lets `bank` go below zero, so the bank checks the balance first in the same server tick (no yield between check and remove).
 
 ### Transfers
 
 1. Validate amount, sender access (`withdraw` permission), receiver exists and differs from sender.
 2. Take the money from the sender (atomic). If that fails → "Not enough money".
-3. Credit the receiver: account row (atomic), online player's Personal (QBCore `AddMoney`), or offline player's Personal (one atomic `JSON_SET` update on `players.money`).
+3. Credit the receiver: account row (atomic), online player's Personal (QBCore `AddMoney`), or offline player's Personal (a row in `vbank_pending`, paid into their bank the moment they next load in — writing into `players.money` directly could be overwritten if they log in at that instant).
 4. If the credit fails, refund the sender and report the failure. Both sides get a history row.
 
 ### qb-banking compatibility (`provide 'qb-banking'`)
