@@ -95,10 +95,13 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
     padding: 48px 64px;
     animation: pop 320ms var(--ease) both;
 }
-.loader-mark { position: relative; width: 92px; height: 92px; display: grid; place-items: center; }
-.loader-mark svg.ring { position: absolute; inset: 0; width: 92px; height: 92px; animation: spin 1.1s linear infinite; }
+/* spin + fill are set from app.js (makeLoader): no CSS animation or dash pattern on the ring */
+.loader-mark { position: relative; width: 108px; height: 108px; display: grid; place-items: center; }
+.loader-mark svg.ring { position: absolute; inset: 0; width: 108px; height: 108px; }
 .loader-mark .ring-track { stroke: var(--ink-4); stroke-width: 5; }
-.loader-mark .ring-arc { stroke: var(--accent); stroke-width: 5; stroke-dasharray: 70 220; filter: drop-shadow(0 0 6px var(--accent-line)); }
+.loader-mark .ring-arc { stroke: var(--accent); stroke-width: 5; filter: drop-shadow(0 0 6px var(--accent-line)); }
+.loader-mark .ring-spin { stroke: var(--gold); stroke-width: 2.5; stroke-dasharray: 38 264; opacity: 0.9; }
+.loader .percent { font-family: var(--font-mono); font-size: 24px; font-weight: 700; letter-spacing: 0.04em; margin-top: -6px; }
 .logo {
     width: 52px; height: 52px;
     display: grid; place-items: center;

@@ -7,6 +7,7 @@ local BRANCH = { branch = true }
 local ATM = { atm = true }
 local KINDS = { branch = true, atm = true }
 local PLACE_REACH = 25.0 -- an admin places within this distance of themselves
+local SAME_SPOT = 1.0    -- a second branch / ATM this close to one counts as the same one
 local places = {}       -- id -> { id, kind, label, x, y, z, heading }
 
 function Places.list()
@@ -83,6 +84,9 @@ Router.on('placeAdd', function(src, data)
     local here = position(src)
     if not here or #(vector3(here.x, here.y, here.z) - vector3(coords.x, coords.y, coords.z)) > PLACE_REACH then
         return Router.fail('Stand closer to the spot')
+    end
+    if Rules.nearestPlace(coords, Places.list(), { [kind] = true }, SAME_SPOT) then
+        return Router.fail(kind == 'atm' and 'There is already an ATM here' or 'There is already a branch here')
     end
     local label = kind == 'atm' and 'ATM' or Rules.cleanText(data.label, 30)
     if not label then return Router.fail('Give the branch a name (up to 30 characters)') end

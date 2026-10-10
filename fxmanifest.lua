@@ -43,6 +43,7 @@ server_scripts {
 files {
     'html/index.html',
     'html/style.css',
+    'html/progress.js',
     'html/app.js',
 }
 

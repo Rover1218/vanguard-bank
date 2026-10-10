@@ -6,7 +6,6 @@
 const IS_GAME = typeof GetParentResourceName === 'function';
 const RESOURCE = IS_GAME ? GetParentResourceName() : 'vanguard-bank';
 const LOADER_MIN_MS = 600;
-const OPENING_MIN_MS = 900;
 const COUNT_MS = 650;
 const LOOKUP_DELAY_MS = 350;
 const CLOSE_MS = 200;
@@ -31,10 +30,10 @@ const ui = {
     opened: null,
     transfer: { from: null, to: '', amount: '', note: '', receiver: null },
     members: [],
-    atm: { number: null, amount: '', busy: false },
+    atm: { number: null, amount: '', loader: null },
     shown: new Map(),
     busy: false,
-    openedAt: 0,
+    loader: null,
     renderedView: null,
     promptFinish: null,
 };
@@ -119,7 +118,6 @@ const KINDS = {
 const MY_MONEY = new Set(['personal', 'savings', 'shared']);
 
 const money = (n) => `${n < 0 ? '-' : ''}$${Math.floor(Math.abs(Number(n) || 0)).toLocaleString('en-US')}`;
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
 const findAccount = (number) => (ui.state && number ? ui.state.accounts.find((account) => account.number === number) : null);
 
 function dayLabel(seconds) {
@@ -223,21 +221,60 @@ function brandBlock(subtitle) {
         el('span', { class: 'brand-text' }, el('strong', { text: ui.brand.Title }), el('small', { text: subtitle || ui.brand.Subtitle })));
 }
 
-function renderLoader(text) {
+function ringCircle(svg, cls, radius) {
+    const circle = document.createElementNS(SVG_NS, 'circle');
+    circle.setAttribute('cx', '50');
+    circle.setAttribute('cy', '50');
+    circle.setAttribute('r', String(radius));
+    circle.setAttribute('class', cls);
+    svg.append(circle);
+    return circle;
+}
+
+/** A loader whose ring spins and fills 0 -> 100%. Driven by JavaScript, so it moves even with
+    Windows animations off. finish() runs it to 100% (after LOADER_MIN_MS) and resolves. */
+function makeLoader(text) {
     const svg = document.createElementNS(SVG_NS, 'svg');
-    svg.setAttribute('viewBox', '0 0 92 92');
+    svg.setAttribute('viewBox', '0 0 100 100');
     svg.setAttribute('class', 'ring');
-    for (const cls of ['ring-track', 'ring-arc']) {
-        const circle = document.createElementNS(SVG_NS, 'circle');
-        circle.setAttribute('cx', '46');
-        circle.setAttribute('cy', '46');
-        circle.setAttribute('r', '40');
-        circle.setAttribute('class', cls);
-        svg.append(circle);
-    }
-    return el('div', { class: 'loader' },
+    ringCircle(svg, 'ring-track', 42);
+    const arc = ringCircle(svg, 'ring-arc', 42);
+    const spinner = ringCircle(svg, 'ring-spin', 48);
+    const length = 2 * Math.PI * 42;
+    arc.setAttribute('stroke-dasharray', String(length));
+    arc.setAttribute('stroke-dashoffset', String(length));
+    arc.setAttribute('transform', 'rotate(-90 50 50)');
+    const percent = el('strong', { class: 'percent', text: '0%' });
+    const node = el('div', { class: 'loader' },
         el('div', { class: 'loader-mark' }, svg, el('span', { class: 'logo', text: ui.brand.Title.charAt(0) })),
-        el('p', { text }));
+        percent, el('p', { text }));
+
+    const state = { started: performance.now(), finishedAt: null, from: 0, value: 0, stopped: false };
+    let resolveDone;
+    const done = new Promise((resolve) => { resolveDone = resolve; });
+    const paint = (now) => {
+        if (state.stopped) return;
+        state.value = state.finishedAt === null ? Progress.waiting(now - state.started) : Progress.finishing(state.from, now - state.finishedAt);
+        arc.setAttribute('stroke-dashoffset', String(length * (1 - state.value / 100)));
+        spinner.setAttribute('transform', `rotate(${Progress.spin(now - state.started)} 50 50)`);
+        percent.textContent = `${Math.floor(state.value)}%`;
+        if (state.value >= 100) { state.stopped = true; resolveDone(); return; }
+        requestAnimationFrame(paint);
+    };
+    requestAnimationFrame(paint);
+
+    return {
+        node,
+        finish() {
+            if (state.finishedAt === null && !state.finishing) {
+                state.finishing = true;
+                setTimeout(() => { state.from = state.value; state.finishedAt = performance.now(); },
+                    Math.max(0, LOADER_MIN_MS - (performance.now() - state.started)));
+            }
+            return done;
+        },
+        stop() { state.stopped = true; resolveDone(); },
+    };
 }
 
 function numberLine(number) {
@@ -739,11 +776,11 @@ function wizardConfirm() {
 async function openAccount() {
     const wizard = ui.wizard;
     const body = appNode.querySelector('.stage-body');
-    if (body) setChildren(body, renderLoader('Opening your account'));
-    const started = performance.now();
+    const loader = makeLoader('Opening your account');
+    if (body) setChildren(body, loader.node);
     const result = await post('request', { action: 'openAccount', data: { type: wizard.type, name: wizard.name } });
-    await wait(OPENING_MIN_MS - (performance.now() - started));
-    if (!result.ok) { toast(result.message, false); render(); return; }
+    if (!result.ok) { loader.stop(); toast(result.message, false); render(); return; }
+    await loader.finish();
     ui.opened = result.data;
     await refresh();
 }
@@ -839,7 +876,7 @@ function renderMembers() {
 // ---------------------------------------------------------------------------
 
 function resetAtm(number = null) {
-    ui.atm = { number, amount: '', busy: false };
+    ui.atm = { number, amount: '', loader: null };
 }
 
 async function atmAction(kind, account) {
@@ -847,12 +884,12 @@ async function atmAction(kind, account) {
     const available = kind === 'deposit' ? ui.state.cash : account.balance;
     const problem = amountProblem(amount, available, kind === 'deposit' ? 'cash' : 'money in the account');
     if (problem) return toast(problem, false);
-    ui.atm.busy = true;
+    const loader = makeLoader('Processing');
+    ui.atm.loader = loader;
     render();
-    const started = performance.now();
     const result = await post('request', { action: kind, data: { number: account.number, amount } });
-    await wait(LOADER_MIN_MS - (performance.now() - started));
-    ui.atm.busy = false;
+    if (result.ok) await loader.finish(); else loader.stop();
+    if (ui.atm.loader === loader) ui.atm.loader = null;
     toast(result.message, result.ok);
     if (result.ok) ui.atm.amount = '';
     if (!(await refresh())) render();
@@ -900,7 +937,7 @@ function renderAtm() {
         el('div', { class: 'atm-top' }, brandBlock('ATM'), el('button', { class: 'icon-btn', type: 'button', title: 'Exit', onclick: close }, icon('close'))),
         el('div', { class: 'atm-screen' },
             account ? atmAmount(account) : atmPick(),
-            ui.atm.busy ? el('div', { class: 'atm-busy' }, renderLoader('Processing')) : null),
+            ui.atm.loader ? el('div', { class: 'atm-busy' }, ui.atm.loader.node) : null),
         el('div', { class: 'atm-foot' }, el('span', { text: ui.state.place }), el('span', { text: `CASH ${money(ui.state.cash)}` })));
 }
 
@@ -981,6 +1018,7 @@ function showApp() {
 }
 
 function hideApp() {
+    if (ui.loader) { ui.loader.stop(); ui.loader = null; }
     appNode.classList.add('is-closing');
     setTimeout(() => {
         appNode.hidden = true;
@@ -990,8 +1028,12 @@ function hideApp() {
     }, CLOSE_MS);
 }
 
+/** The server answered: run the loader to 100%, then show the bank / ATM. */
 async function onOpen(state) {
-    await wait(LOADER_MIN_MS - (performance.now() - ui.openedAt));
+    const loader = ui.loader;
+    if (loader) await loader.finish();
+    if (loader !== ui.loader) return; // closed or re-opened meanwhile
+    ui.loader = null;
     resetUi();
     ui.state = state;
     render();
@@ -1002,8 +1044,9 @@ window.addEventListener('message', (event) => {
     switch (data.action) {
         case 'loading':
             showApp();
-            ui.openedAt = performance.now();
-            setChildren(appNode, renderLoader('Connecting to Vanguard Bank'));
+            if (ui.loader) ui.loader.stop();
+            ui.loader = makeLoader('Connecting to Vanguard Bank');
+            setChildren(appNode, ui.loader.node);
             break;
         case 'open': applyBrand(data.brand); onOpen(data.state); break;
         case 'state': ui.state = data.state; render(); break;
@@ -1078,7 +1121,7 @@ const Preview = {
     },
     show(page) {
         const shared = 'VB-5532-1049';
-        if (page === 'loading') return setChildren(appNode, renderLoader('Connecting to Vanguard Bank'));
+        if (page === 'loading') { ui.loader = makeLoader('Connecting to Vanguard Bank'); return setChildren(appNode, ui.loader.node); }
         if (page === 'atm' || page === 'atmpick') {
             ui.state.mode = 'atm';
             ui.state.place = 'ATM';

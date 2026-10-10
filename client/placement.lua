@@ -3,6 +3,7 @@
 Placement = { active = false, index = 1, heading = 0.0 }
 
 local REACH, REMOVE_RADIUS, ROTATE_STEP = 20.0, 1.5, 15.0
+local ATM_SEARCH = 1.2 -- metres around the aimed point to look for an ATM prop
 local KINDS = { { id = 'branch', label = 'Branch counter' }, { id = 'atm', label = 'ATM' } }
 local KEY = { place = 24, wheelDown = 14, wheelUp = 15, previous = 174, next = 175, remove = 178, exit = 194, pause = 200 }
 local ATM = {}
@@ -26,7 +27,24 @@ end
 local function kind() return KINDS[Placement.index] end
 
 local function bar(hint)
+    Placement.hint = hint
     SendNUIMessage({ action = 'placement', kind = kind().label, index = Placement.index, total = #KINDS, hint = hint })
+end
+
+--- Updates the hint only when it changes (the tick runs every frame).
+local function hint(text)
+    if Placement.hint ~= text then bar(text) end
+end
+
+--- The ATM prop at (or right next to) the aimed point. Wall ATMs such as the Fleeca ones are part
+--- of the building's collision, so the ray hits the wall: look for the prop near that point too.
+local function atmAt(position, entity)
+    if entity ~= 0 and GetEntityType(entity) == 3 and ATM[GetEntityModel(entity)] then return entity end
+    for hash in pairs(ATM) do
+        local object = GetClosestObjectOfType(position.x, position.y, position.z, ATM_SEARCH, hash, false, false, false)
+        if object ~= 0 then return object end
+    end
+    return nil
 end
 
 local function highlight(entity)
@@ -78,13 +96,22 @@ local function tick()
 
     local hit, position, entity = aim()
     if kind().id == 'atm' then
-        local isAtm = hit and entity ~= 0 and GetEntityType(entity) == 3 and ATM[GetEntityModel(entity)] == true
-        highlight(isAtm and entity or nil)
-        if isAtm and IsDisabledControlJustReleased(0, KEY.place) then
-            save('atm', GetEntityCoords(entity), GetEntityHeading(entity))
+        local atm = hit and atmAt(position, entity) or nil
+        highlight(atm)
+        if atm then
+            hint('ATM found - click to place it')
+            if IsDisabledControlJustReleased(0, KEY.place) then save('atm', GetEntityCoords(atm), GetEntityHeading(atm)) end
+        elseif hit then
+            -- custom buildings may use ATMs that are not one of Config.AtmModels: place at the spot
+            hint('No ATM prop here - click to place one at this spot')
+            DrawMarker(25, position.x, position.y, position.z + 0.02, 0, 0, 0, 0, 0, 0, 0.5, 0.5, 0.5, 245, 197, 107, 170, false, false, 2, false, nil, nil, false)
+            if IsDisabledControlJustReleased(0, KEY.place) then save('atm', position, Placement.heading) end
+        else
+            hint('Aim at an ATM')
         end
     else
         highlight(nil)
+        hint('Aim at the counter, click, then type its name')
         if hit then
             DrawMarker(25, position.x, position.y, position.z + 0.02, 0, 0, 0, 0, 0, 0, 0.7, 0.7, 0.7, 99, 102, 241, 170, false, false, 2, false, nil, nil, false)
             if IsDisabledControlJustReleased(0, KEY.place) then save('branch', position, Placement.heading) end

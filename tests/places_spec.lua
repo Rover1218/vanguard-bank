@@ -14,8 +14,20 @@ MySQL = {
     update = { await = function() return 1 end },
 }
 Db = { meta = function() return '1' end, setMeta = function() end }
-Router = { on = function() end }
+local handlers = {}
+Router = {
+    on = function(name, fn) handlers[name] = fn end,
+    ok = function(message) return { ok = true, message = message } end,
+    fail = function(message) return { ok = false, message = message } end,
+    log = function() end,
+}
 RegisterCommand = function() end
+TriggerClientEvent = function() end
+IsPlayerAceAllowed = function() return true end
+local V = {}
+V.__sub = function(a, b) return setmetatable({ x = a.x - b.x, y = a.y - b.y, z = a.z - b.z }, V) end
+V.__len = function(a) return math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z) end
+vector3 = function(x, y, z) return setmetatable({ x = x, y = y, z = z }, V) end
 local playerPos = { x = 0, y = 0, z = 0 }
 GetPlayerPed = function() return 1 end
 GetEntityCoords = function() return playerPos end
@@ -44,5 +56,19 @@ T.describe('Places.require', function()
         local place, message = Places.require(1, 'deposit')
         T.eq(place, nil)
         T.eq(message, 'Go to a bank branch or ATM')
+    end)
+end)
+
+T.describe('placeAdd', function()
+    T.it('refuses a second ATM on the same spot (clicking an ATM twice)', function()
+        playerPos = { x = 60, y = 1, z = 0 }
+        local result = handlers.placeAdd(1, { kind = 'atm', coords = { x = 60.2, y = 0, z = 0 }, heading = 0 })
+        T.eq(result.ok, false)
+        T.eq(result.message, 'There is already an ATM here')
+    end)
+    T.it('places another ATM a few metres away', function()
+        playerPos = { x = 60, y = 1, z = 0 }
+        local result = handlers.placeAdd(1, { kind = 'atm', coords = { x = 63, y = 0, z = 0 }, heading = 0 })
+        T.eq(result.ok, true)
     end)
 end)
