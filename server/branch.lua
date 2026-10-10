@@ -19,7 +19,7 @@ Router.on('open', function(src)
     return Router.ok(nil, {
         mode = place.kind, place = place.label, name = Bridge.name(src), cash = Bridge.money(src, 'cash'),
         accounts = accounts, owned = Accounts.ownedCount(Bridge.citizenid(src)), maxOwned = Config.MaxOwnedAccounts,
-        maxAmount = Config.MaxAmount, quick = Config.QuickAmounts,
+        maxAmount = Config.MaxAmount, quick = Config.QuickAmounts, historyPage = Config.HistoryPage,
     })
 end)
 
