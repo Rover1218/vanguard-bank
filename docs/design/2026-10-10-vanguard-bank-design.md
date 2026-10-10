@@ -17,11 +17,12 @@ A modern bank for the Rover Development QBCore server, built as a standalone res
 | Identification | No bank card, no PIN. Interact with a branch or ATM; the character (citizenid) decides which accounts appear. |
 | Branch | Everything: deposit, withdraw, transfer, history, open account, members, rename, close. |
 | ATM | Withdraw and deposit only, on any account the player may use. No managing. |
+| Places | Branch counters and ATMs are placed in game by admins with a placement tool (like Vanguard Business stations) and stored in the database. Only placed ATMs work; the server checks the player is at a placed branch / ATM for every action. The 8 standard bank counters are filled in on first start. |
 | Not in v1 | Cards / PIN, savings interest, loans, opening fees, phone app, daily ATM limit. |
 
 ## What players see
 
-### Branch (8 bank counters from qb-banking's list, map icon "Bank", press E)
+### Branch (placed bank counters, map icon "Bank", press E)
 
 1. **Loader** — "Connecting to Vanguard Bank" with the logo animating while accounts load (at least 600 ms so it never flickers).
 2. **Dashboard** — account cards (type icon, name, number, animated balance). Personal first, then owned, shared, business, job.
@@ -32,7 +33,7 @@ A modern bank for the Rover Development QBCore server, built as a standalone res
 7. **Members (Shared, owner only)** — add a player by server ID (they must be online), pick role, change role, remove.
 8. **Close** — only when the balance is 0. Personal, Business and Job accounts cannot be closed here.
 
-### ATM (props `prop_atm_01`, `prop_atm_02`, `prop_atm_03`, `prop_fleeca_atm`, press E)
+### ATM (placed ATMs only, press E)
 
 A compact ATM screen: account picker (every account the player may withdraw from or deposit to), amount keypad with quick amounts, Withdraw / Deposit. Same loader style, shorter.
 
@@ -73,9 +74,11 @@ vanguard-bank/
   server/compat.lua      qb-banking exports
   server/business.lua    exports used by Vanguard Business
   server/migrate.lua     one-time copy of qb-banking job/gang/shared accounts
+  server/places.lua      placed branches / ATMs: load, add, remove, "is this player at one", admin command
   server/main.lua        start-up, hello
   client/main.lua        requests, NUI open/close
-  client/places.lua      branch blips + E prompts, ATM detection + E prompt
+  client/places.lua      branch blips, E prompts at placed branches and ATMs
+  client/placement.lua   admin placement mode (aim + click, snaps to ATM props)
   html/                  index.html, style.css, app.js (bank + ATM modes, preview data)
 ```
 
@@ -84,6 +87,7 @@ vanguard-bank/
 - `vbank_accounts` — `id`, `number` (unique), `type` (savings, shared, business, job, gang), `name`, `owner` (citizenid, null for business/job/gang), `ref` (business id / job / gang name), `balance` BIGINT ≥ 0, `created_at`.
 - `vbank_personal` — `citizenid` (PK), `number` (unique). Balance stays in QBCore.
 - `vbank_members` — `account_id`, `citizenid`, `name`, `role`.
+- `vbank_places` — `id`, `kind` (branch, atm), `x`, `y`, `z`, `heading`, `label` (branch name, e.g. "Fleeca Legion Square"). Filled with the 8 standard counters when empty on first start.
 - `vbank_transactions` — `id`, `account` (number), `kind` (deposit, withdraw, transfer_in, transfer_out, payment, fee, system), `amount` (signed), `actor` (name), `note`, `created_at`. Index on (`account`, `id`).
 
 Balances change only through one atomic statement: `UPDATE … SET balance = balance + ? WHERE id = ? AND balance + ? >= 0` (same pattern as Vanguard Business), so two players spending at once can never overdraw. Personal money goes through QBCore's `AddMoney` / `RemoveMoney`.
@@ -108,10 +112,12 @@ If `provide` does not route exports on this FXServer build (checked in the plan'
 - First start with the bank: each business's existing balance is moved into its new bank account once (column set to 0, logged).
 - Bank access to Business accounts uses Vanguard Business ranks through an export it provides (`rankOf(businessId, citizenid)`); Owner and Manager get access.
 
-### Places
+### Places (placed in game)
 
-- Branches: the 8 qb-banking locations (vanilla Fleeca + Pacific counters), interact distance 2 m; server re-checks the player is within 5 m of a branch for every branch action.
-- ATMs: the client finds an ATM prop within 1.5 m and shows the prompt. The server cannot see map props, so ATM actions are limited to deposit / withdraw (which branches allow too); every other action requires a branch. Same limitation as every FiveM bank script; rate limit and `MaxAmount` still apply.
+- Admin command `/bankadmin` (ACE `vanguard.bank.admin`) toggles placement mode, same controls as Vanguard Business: ← → switch Branch / ATM, Click place, mouse wheel rotate, Delete removes the branch / ATM you aim at, Backspace done. Aiming at an ATM prop (`prop_atm_01/02/03`, `prop_fleeca_atm`) snaps to it. A new branch asks for its label.
+- Every placed spot shows an E prompt within 2 m; branches also get a map icon.
+- The server checks every request against the placed spots: branch actions need the player within 4 m of a placed branch; withdraw / deposit need a placed branch or ATM within 4 m. Nothing works away from them, ATMs included.
+- First start with an empty `vbank_places`: the 8 standard counters from qb-banking (vanilla Fleeca + Pacific Standard) are added so the bank works straight away; admins can move or delete them.
 
 ## Safety
 
@@ -126,11 +132,12 @@ If `provide` does not route exports on this FXServer build (checked in the plan'
 - Lua syntax check of every file; `node --check` for the UI.
 - Browser previews of bank (dashboard, account, transfer, open-account flow) and ATM screens with sample data; headless screenshots checked before install.
 - Code / security review agent before installing.
-- In-game test list for the user: deposit/withdraw at branch and ATM, transfer to another account, open Savings, open Shared + add member, business account visible to Owner, police fine still lands in the police job account.
+- In-game test list for the user: `/bankadmin` → place an ATM (snaps to the prop) and a branch, deposit/withdraw at branch and ATM, an unplaced ATM does nothing, transfer to another account, open Savings, open Shared + add member, business account visible to Owner, police fine still lands in the police job account.
 
 ## Install on this server
 
 1. Back up `server.cfg`; move `[qb]/qb-banking` to `backups/disabled-resources/`.
 2. Copy to `[local]/vanguard-bank`; it must start after qb-core and oxmysql and before scripts that call qb-banking while starting (exact server.cfg line chosen in the plan after reading the current start order).
-3. Update Vanguard Business (project + server) with the money adapter.
-4. Full server restart (not a single-resource restart).
+3. server.cfg: `add_ace group.admin vanguard.bank.admin allow` (placement tool).
+4. Update Vanguard Business (project + server) with the money adapter.
+5. Full server restart (not a single-resource restart).
