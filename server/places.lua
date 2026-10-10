@@ -3,6 +3,8 @@
 Places = {}
 
 local ANY = { branch = true, atm = true }
+local BRANCH = { branch = true }
+local ATM = { atm = true }
 local KINDS = { branch = true, atm = true }
 local PLACE_REACH = 25.0 -- an admin places within this distance of themselves
 local places = {}       -- id -> { id, kind, label, x, y, z, heading }
@@ -50,11 +52,14 @@ function Places.at(src, kinds)
 end
 
 --- The branch / ATM the player stands at, if it allows action; else nil + message.
+--- A branch in reach always wins, so an ATM placed next to a counter never blocks banking there.
 function Places.require(src, action)
-    local place = Places.at(src)
-    if not place then return nil, 'Go to a bank branch or ATM' end
-    if not Rules.allowedAt(place.kind, action) then return nil, 'Go to a bank branch for that' end
-    return place
+    local branch = Places.at(src, BRANCH)
+    if branch then return branch end
+    local atm = Places.at(src, ATM)
+    if not atm then return nil, 'Go to a bank branch or ATM' end
+    if not Rules.allowedAt('atm', action) then return nil, 'Go to a bank branch for that' end
+    return atm
 end
 
 function Places.broadcast(target)

@@ -86,15 +86,23 @@ local function createBankStatement(playerId, accountName, amount, reason, statem
     return true
 end
 
-exports('AddMoney', addMoney)
-exports('AddGangMoney', addMoney)
-exports('RemoveMoney', removeMoney)
-exports('RemoveGangMoney', removeMoney)
-exports('GetAccount', getAccount)
-exports('GetGangAccount', getAccount)
-exports('GetAccountBalance', getBalance)
-exports('GetBalance', getBalance)
-exports('CreateJobAccount', createSociety('job'))
-exports('CreateGangAccount', createSociety('gang'))
-exports('CreatePlayerAccount', createPlayerAccount)
-exports('CreateBankStatement', createBankStatement)
+-- This FXServer build does not route exports through `provide`, so the qb-banking export events
+-- are answered here as well (same trick as ps_lib). Callers keep a reference, so after updating
+-- this resource restart the whole server, not just vanguard-bank.
+local function export(name, fn)
+    exports(name, fn)
+    AddEventHandler(('__cfx_export_qb-banking_%s'):format(name), function(setCallback) setCallback(fn) end)
+end
+
+export('AddMoney', addMoney)
+export('AddGangMoney', addMoney)
+export('RemoveMoney', removeMoney)
+export('RemoveGangMoney', removeMoney)
+export('GetAccount', getAccount)
+export('GetGangAccount', getAccount)
+export('GetAccountBalance', getBalance)
+export('GetBalance', getBalance)
+export('CreateJobAccount', createSociety('job'))
+export('CreateGangAccount', createSociety('gang'))
+export('CreatePlayerAccount', createPlayerAccount)
+export('CreateBankStatement', createBankStatement)

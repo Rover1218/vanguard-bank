@@ -26,11 +26,14 @@ function Rules.newNumber(random)
 end
 
 --- "VB-1234-5678", "vb12345678", "1234 5678" ... -> "VB-1234-5678"; anything else -> nil.
+--- Two groups of four digits, optional "VB" prefix, at most one space or dash between parts.
 function Rules.parseNumber(text)
     if type(text) ~= 'string' or #text > 20 then return nil end
-    local digits = text:upper():gsub('^%s*VB', ''):gsub('[%s%-]', '')
-    if not digits:match('^%d%d%d%d%d%d%d%d$') then return nil end
-    return ('VB-%s-%s'):format(digits:sub(1, 4), digits:sub(5, 8))
+    local upper = text:upper()
+    local first, second = upper:match('^%s*VB[%s%-]?(%d%d%d%d)[%s%-]?(%d%d%d%d)%s*$')
+    if not first then first, second = upper:match('^%s*(%d%d%d%d)[%s%-]?(%d%d%d%d)%s*$') end
+    if not first then return nil end
+    return ('VB-%s-%s'):format(first, second)
 end
 
 local USE = { view = true, deposit = true, withdraw = true, transfer = true }

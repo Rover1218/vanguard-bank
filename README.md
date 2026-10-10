@@ -49,6 +49,8 @@ It replaces **qb-banking**: scripts written for qb-banking keep working, and its
 4. Restart the whole server. Tables are created automatically, qb-banking's accounts are copied once, and the 8 standard bank counters are added as branches.
 5. Check in the server console: `vbank_selftest` should print `qb-banking exports OK`.
 
+> Scripts keep a reference to the qb-banking exports, so after updating Vanguard Bank restart the **whole server**, not just this resource. (Vanguard Bank answers the `qb-banking` export calls itself as well as through `provide`, because some FXServer builds do not route exports through `provide`.)
+
 ## Placing branches and ATMs
 
 Type **`/bankadmin`** (admins) to toggle placement mode:

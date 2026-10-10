@@ -74,7 +74,9 @@ Router.on('transfer', function(src, data)
         return Router.fail('Not enough money in that account')
     end
     if not Money.credit(to, amount, actor, ('From %s%s'):format(from.number, suffix), 'transfer_in') then
-        Money.credit(from, amount, actor, ('Transfer to %s failed - returned'):format(to.number), 'refund')
+        if not Money.credit(from, amount, actor, ('Transfer to %s failed - returned'):format(to.number), 'refund') then
+            Router.log(src, ('REFUND FAILED: %d from %s to %s - pay it back by hand'):format(amount, from.number, to.number))
+        end
         return Router.fail('The transfer failed - the money was returned')
     end
     if to.type == 'personal' then

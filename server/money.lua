@@ -17,9 +17,10 @@ function Money.credit(account, amount, actor, note, kind)
         if target then
             if not Bridge.addMoney(target, 'bank', amount, Money.REASON) then return false end
         else
-            local id = MySQL.insert.await('INSERT INTO vbank_pending (citizenid, amount, note) VALUES (?, ?, ?)',
+            -- a database error must come back as "not credited" so the caller refunds the sender
+            local ok, id = pcall(MySQL.insert.await, 'INSERT INTO vbank_pending (citizenid, amount, note) VALUES (?, ?, ?)',
                 { account.owner, amount, note })
-            if not id then return false end
+            if not ok or not id then return false end
         end
     elseif not Accounts.adjust(account.id, amount) then
         return false
@@ -74,7 +75,9 @@ Router.on('withdraw', function(src, data)
     local actor = Bridge.name(src)
     if not Money.debit(src, account, amount, actor, place.label, 'withdraw') then return Router.fail('Not enough money in that account') end
     if not Bridge.addMoney(src, 'cash', amount, Money.REASON) then
-        Money.credit(account, amount, actor, 'Withdrawal failed - returned', 'refund')
+        if not Money.credit(account, amount, actor, 'Withdrawal failed - returned', 'refund') then
+            Router.log(src, ('REFUND FAILED: withdrawal of %d from %s - pay it back by hand'):format(amount, account.number))
+        end
         return Router.fail('The withdrawal failed - the money stays in the account')
     end
     return Router.ok(('Withdrew %s'):format(Rules.money(amount)))
