@@ -4,6 +4,11 @@ A modern bank for FiveM **QBCore** servers. Players walk up to a bank counter fo
 
 It replaces **qb-banking**: scripts written for qb-banking keep working, and its accounts are copied over on first start. With **Vanguard Business** installed, business money lives in the bank too.
 
+<p align="center">
+  <a href="docs/launch-video.mp4"><img src="docs/launch-preview.gif" alt="Vanguard Bank launch video (20 s)" width="100%"></a>
+</p>
+<p align="center"><a href="docs/launch-video.mp4"><b>▶ Watch the launch video with sound</b></a> · 20 s · MP4</p>
+
 ![Accounts](docs/bank.png)
 
 ## Features
